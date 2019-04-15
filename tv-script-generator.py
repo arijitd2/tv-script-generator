@@ -223,9 +223,25 @@ def batch_data(words, sequence_length, batch_size):
     :return: DataLoader with batched data
     """
     # TODO: Implement function
+    feature_tensor, target_tensor = [], []
     
+    for i in range(len(words)):
+        target_idx = i + sequence_length
+        if target_idx < len(words):
+            features = words[i:i + sequence_length]
+            feature_tensor.append(features)
+            
+            target = words[target_idx]
+            target_tensor.append(target)
+    
+    data_set = TensorDataset(
+        torch.from_numpy(np.array(feature_tensor)),
+        torch.from_numpy(np.array(target_tensor))
+    )
+    data_loader = DataLoader(data_set, batch_size=batch_size, shuffle=True)
     # return a dataloader
-    return None
+    return data_loader
+
 
 # there is no test for this function, but you are encouraged to create
 # print statements and tests of your own
