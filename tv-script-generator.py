@@ -335,9 +335,23 @@ class RNN(nn.Module):
         super(RNN, self).__init__()
         # TODO: Implement function
         
-        # set class variables
+        # class variables
+        self.output_size = output_size
+        self.n_layers = n_layers
+        self.hidden_dim = hidden_dim
         
-        # define model layers
+        # embedding and LSTM layers
+        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.lstm = nn.LSTM(
+            embedding_dim,
+            hidden_dim,
+            n_layers,
+            dropout=dropout,
+            batch_first=True
+        )
+        
+        # linear and sigmoid layers
+        self.fc = nn.Linear(hidden_dim, output_size)
     
     
     def forward(self, nn_input, hidden):
@@ -348,9 +362,25 @@ class RNN(nn.Module):
         :return: Two Tensors, the output of the neural network and the latest hidden state
         """
         # TODO: Implement function   
-
+        batch_size = nn_input.size(0)
+        
+        # embeddings and lstm_out
+        embeddings = self.embedding(nn_input)
+        lstm_out, hidden = self.lstm(embeddings, hidden)
+        
+        # stack up lstm outputs
+        lstm_out = lstm_out.contiguous().view(-1, self.hidden_dim)
+        
+        # fully-connected layer
+        out = self.fc(lstm_out)
+        
+        # reshape to be (batch_size, seq_length, output_size)
+        out = out.view(batch_size, -1, self.output_size)
+        # get last batch
+        out = out[:, -1]
+        
         # return one batch of output word scores and the hidden state
-        return None, None
+        return out, hidden
     
     
     def init_hidden(self, batch_size):
@@ -362,8 +392,15 @@ class RNN(nn.Module):
         # Implement function
         
         # initialize hidden state with zero weights, and move to GPU if available
-        
-        return None
+        weight = next(self.parameters()).data
+        if (train_on_gpu):
+            hidden = (weight.new(self.n_layers, batch_size, self.hidden_dim).zero_().cuda(),
+                      weight.new(self.n_layers, batch_size, self.hidden_dim).zero_().cuda())
+        else:
+            hidden = (weight.new(self.n_layers, batch_size, self.hidden_dim).zero_(),
+                      weight.new(self.n_layers, batch_size, self.hidden_dim).zero_())
+        return hidden
+
 
 """
 DON'T MODIFY ANYTHING IN THIS CELL THAT IS BELOW THIS LINE
@@ -383,7 +420,7 @@ tests.test_rnn(RNN, train_on_gpu)
 # **If a GPU is available, you should move your data to that GPU device, here.**
 
 #%%
-def forward_back_prop(rnn, optimizer, criterion, inp, target, hidden):
+def forward_back_prop(rnn, optimizer, criterion, inputs, target, hidden):
     """
     Forward and backward propagation on the neural network
     :param decoder: The PyTorch Module that holds the neural network
@@ -397,11 +434,33 @@ def forward_back_prop(rnn, optimizer, criterion, inp, target, hidden):
     # TODO: Implement Function
     
     # move data to GPU, if available
+    if(train_on_gpu):
+        rnn.cuda()
+        inputs, target = inputs.cuda(), target.cuda()
+    
+    # Creating new variables for the hidden state, otherwise
+    # we'd backprop through the entire training history
+    hidden_state = tuple([each.data for each in hidden])
+    
+    # zero accumulated gradients
+    rnn.zero_grad()
+    
+    # get the output from the model
+    output, hidden_state = rnn(inputs, hidden_state)
+    
+    # calculate the loss
+    loss = criterion(output, target)
     
     # perform backpropagation and optimization
+    loss.backward()
 
+    clip = 5 # gradient clipping
+    # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
+    nn.utils.clip_grad_norm_(rnn.parameters(), clip)
+    optimizer.step()
+    
     # return the loss over a batch and the hidden state produced by our model
-    return None, None
+    return loss.item(), hidden_state
 
 # Note that these tests aren't completely extensive.
 # they are here to act as general checks on the expected outputs of your functions
@@ -476,35 +535,34 @@ def train_rnn(rnn, batch_size, optimizer, criterion, n_epochs, show_every_n_batc
 #%%
 # Data params
 # Sequence Length
-sequence_length =   # of words in a sequence
+sequence_length = 10  # of words in a sequence
 # Batch Size
-batch_size = 
+batch_size = 128
 
 # data loader - do not change
 train_loader = batch_data(int_text, sequence_length, batch_size)
 
 
-#%%
 # Training parameters
 # Number of Epochs
-num_epochs = 
+num_epochs = 10
 # Learning Rate
-learning_rate = 
+learning_rate = .001 
 
 # Model parameters
 # Vocab size
-vocab_size = 
+vocab_size = len(vocab_to_int)
 # Output size
-output_size = 
+output_size = vocab_size
 # Embedding Dimension
-embedding_dim = 
+embedding_dim = 200
 # Hidden Dimension
-hidden_dim = 
+hidden_dim = 260
 # Number of RNN Layers
-n_layers = 
+n_layers = 2
 
 # Show stats for every n number of batches
-show_every_n_batches = 500
+show_every_n_batches = 1000
 
 #%% [markdown]
 # ### Train
